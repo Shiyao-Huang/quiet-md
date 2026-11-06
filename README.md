@@ -106,7 +106,7 @@ cargo build --release -p quiet-cli
 ./target/release/quiet --help
 ```
 
-The command surface follows the same three-layer shape as modern Agent CLIs: `+shortcuts` for common workflows, typed local commands for explicit operations, and `schema` for machine-readable discovery. It only operates on the local Quiet.md library; cloud messaging, calendar, mail, Base and OAuth remain outside Quiet's scope.
+The command surface follows the same three-layer shape as modern Agent CLIs: `+shortcuts` for common workflows, typed local commands for explicit operations, and `schema` for machine-readable discovery. The local commands operate on the Quiet.md library; root shortcuts `+search`, `+fetch` and `+import` delegate selected Feishu material operations to the installed `lark-cli` user identity.
 
 ```bash
 quiet docs +list --format table
@@ -115,6 +115,22 @@ quiet docs +create --title "Weekly note" --content "# Progress\n\nDone" --conten
 quiet docs +export DOCUMENT_ID --as markdown --output note.md
 quiet library doctor --format pretty
 quiet trash restore DOCUMENT_ID --yes
+```
+
+For selected Feishu material operations:
+
+```bash
+quiet +search --query "" --mine
+quiet +fetch --doc DOCUMENT_URL --doc-format markdown
+quiet --library /tmp/quiet-lib +import --doc DOCUMENT_URL --doc-format markdown
+```
+
+Quiet also bundles the document-agent Prompt and skill routing:
+
+```bash
+quiet skills list
+quiet skills read quiet-doc
+quiet prompt
 ```
 
 Successful calls return a JSON envelope by default. Use `--format json|pretty|table|ndjson|csv`, `--jq` for safe field selection, `--dry-run` before writes, and `--yes` for high-risk operations. Complete command details and the local data contract are in [docs/CLI.md](docs/CLI.md).

@@ -104,7 +104,7 @@ cargo build --release -p quiet-cli
 ./target/release/quiet --help
 ```
 
-命令结构沿用现代 Agent CLI 的三层形式：常用工作流使用 `+shortcut`，明确操作使用类型化本地命令，执行前用 `schema` 自省参数和风险。它只操作本地 Quiet.md 文档库；消息、日历、邮箱、多维表格和 OAuth 等云端能力不属于 Quiet 的范围。
+命令结构沿用现代 Agent CLI 的三层形式：常用工作流使用 `+shortcut`，明确操作使用类型化本地命令，执行前用 `schema` 自省参数和风险。本地命令操作 Quiet.md 文档库；根级 `+search`、`+fetch` 和 `+import` 将选定的飞书资料操作委托给已安装的 `lark-cli` 用户身份。
 
 ```bash
 quiet docs +list --format table
@@ -113,6 +113,22 @@ quiet docs +create --title "周报" --content "# 进展\n\n已完成" --content-
 quiet docs +export DOCUMENT_ID --as markdown --output note.md
 quiet library doctor --format pretty
 quiet trash restore DOCUMENT_ID --yes
+```
+
+飞书资料操作示例：
+
+```bash
+quiet +search --query "" --mine
+quiet +fetch --doc DOCUMENT_URL --doc-format markdown
+quiet --library /tmp/quiet-lib +import --doc DOCUMENT_URL --doc-format markdown
+```
+
+Quiet 也内置文档 Agent Prompt 和 skill 路由：
+
+```bash
+quiet skills list
+quiet skills read quiet-doc
+quiet prompt
 ```
 
 成功调用默认返回 JSON envelope。可用 `--format json|pretty|table|ndjson|csv`，用 `--jq` 安全选择字段；写操作先用 `--dry-run`，高风险操作必须传 `--yes`。完整命令和本地数据契约见 [docs/CLI.md](docs/CLI.md)。

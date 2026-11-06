@@ -14,6 +14,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const NAME: &str = "quiet";
+const QUIET_DOC_SKILL: &str = include_str!("../../../skills/quiet-doc/SKILL.md");
+const QUIET_DOC_PROMPT: &str = include_str!("../../../skills/quiet-doc/PROMPT.md");
 
 #[derive(Clone, Debug)]
 struct Options {
@@ -158,11 +160,14 @@ fn next_value(args: &[String], i: &mut usize, name: &str) -> Result<String, CliE
 fn dispatch(args: &[String], options: &Options) -> Result<Value, CliError> {
     match args.first().map(String::as_str) {
         Some("docs") | Some("doc") => docs_command(&args[1..], options),
+        Some("+search") | Some("+fetch") | Some("+import") | Some("search") | Some("fetch") | Some("import") => quiet_command(args, options),
         Some("library") => library_command(&args[1..], options),
         Some("trash") => trash_command(&args[1..], options),
         Some("assets") => assets_command(&args[1..], options),
         Some("emoji") => emoji_command(&args[1..]),
         Some("schema") => schema_command(&args[1..]),
+        Some("skills") => skills_command(&args[1..]),
+        Some("prompt") => prompt_command(&args[1..]),
         Some("app") => app_command(&args[1..], options),
         Some("help") => {
             print_help(&args[1..]);
@@ -172,6 +177,169 @@ fn dispatch(args: &[String], options: &Options) -> Result<Value, CliError> {
         None => unreachable!(),
     }
 }
+fn skills_command(args: &[String]) -> Result<Value, CliError> {
+    let command = args.first().map(String::as_str).unwrap_or("list");
+    match command {
+        "list" | "+list" => Ok(json!({ "items": [{ "name": "quiet-doc", "description": "Quiet.md local document authoring and Feishu-compatible material bridge", "path": "skills/quiet-doc/SKILL.md" }] })),
+        "read" | "+read" => {
+            let name = required_positional(args, 1, "skill 名称")?;
+            if name != "quiet-doc" { return Err(CliError::validation(format!("找不到 skill：{name}"), "使用 `quiet skills list` 查看可用 skill")); }
+            Ok(json!({ "name": name, "content": QUIET_DOC_SKILL, "prompt": QUIET_DOC_PROMPT }))
+        }
+        "help" => {
+            print_help(&["skills".into()]);
+            Ok(Value::Null)
+        }
+        other => Err(CliError::usage(format!("未知 skills 命令：{other}"), "可选值：list、read")),
+    }
+}
+
+fn prompt_command(args: &[String]) -> Result<Value, CliError> {
+    if let Some(name) = args.first() && name != "quiet-doc" { return Err(CliError::validation(format!("找不到 prompt：{name}"), "可选值：quiet-doc")); }
+    Ok(json!({ "name": "quiet-doc", "content": QUIET_DOC_PROMPT }))
+}
+
+
+fn quiet_command(args: &[String], options: &Options) -> Result<Value, CliError> {
+    let command = args.first().map(String::as_str).unwrap_or("help");
+    match command {
+        "+search" | "search" => {
+            let forwarded = lark_forward_args(args, "drive", "+search", LARK_SEARCH_VALUE_FLAGS, LARK_SEARCH_BOOL_FLAGS, &[])?;
+            Ok(remote_result(&run_lark(&forwarded)?, "drive +search"))
+        }
+        "+fetch" | "fetch" => {
+            let forwarded = lark_forward_args(args, "docs", "+fetch", LARK_FETCH_VALUE_FLAGS, &[], &[])?;
+            if flag(args, "--doc").is_none_or(|doc| doc.trim().is_empty()) {
+                return Err(CliError::usage("缺少 --doc", "示例：quiet +fetch --doc DOC_URL --doc-format markdown"));
+            }
+            Ok(remote_result(&run_lark(&forwarded)?, "docs +fetch"))
+        }
+        "+import" | "import" => quiet_import(args, options),
+        "help" => {
+            print_help(&["quiet".into()]);
+            Ok(Value::Null)
+        }
+        other => Err(CliError::usage(format!("未知 quiet 命令：{other}"), "可选值：+search、+fetch、+import")),
+    }
+}
+
+const LARK_SEARCH_VALUE_FLAGS: &[&str] = &[
+    "--as", "--chat-ids", "--commented-since", "--commented-until", "--created-since", "--created-until",
+    "--creator-ids", "--doc-types", "--edited-since", "--edited-until", "--folder-tokens", "--opened-since",
+    "--opened-until", "--original-creator-ids", "--page-size", "--page-token", "--query", "--sharer-ids",
+    "--sort", "--space-ids",
+];
+
+const LARK_SEARCH_BOOL_FLAGS: &[&str] = &["--created-by-me", "--mine", "--only-comment", "--only-title"];
+
+const LARK_FETCH_VALUE_FLAGS: &[&str] = &[
+    "--as", "--context-after", "--context-before", "--detail", "--doc", "--doc-format", "--end-block-id",
+    "--keyword", "--lang", "--max-depth", "--revision-id", "--scope", "--start-block-id",
+];
+
+fn lark_forward_args(args: &[String], domain: &str, subcommand: &str, value_flags: &[&str], bool_flags: &[&str], skip_flags: &[&str]) -> Result<Vec<String>, CliError> {
+    let mut out = vec![domain.into(), subcommand.into(), "--as".into(), flag(args, "--as").unwrap_or_else(|| "user".into())];
+    if domain == "drive" { out.extend(["--format".into(), "json".into()]); }
+    let mut i = 1;
+    while i < args.len() {
+        let raw = &args[i];
+        let name = raw.split_once('=').map_or(raw.as_str(), |(name, _)| name);
+        if name == "--as" {
+            if !raw.contains('=') {
+                i += 1;
+                if i >= args.len() { return Err(CliError::usage("--as 需要参数", "可选值：user、bot")); }
+            }
+        } else if skip_flags.contains(&name) {
+            if !raw.contains('=') {
+                i += 1;
+                if i >= args.len() { return Err(CliError::usage(format!("{name} 需要参数"), "运行 `quiet --help` 查看示例")); }
+            }
+        } else if value_flags.contains(&name) {
+            out.push(raw.clone());
+            if !raw.contains('=') {
+                i += 1;
+                let value = args.get(i).cloned().ok_or_else(|| CliError::usage(format!("{name} 需要参数"), "运行 `quiet --help` 查看示例"))?;
+                out.push(value);
+            }
+        } else if bool_flags.contains(&name) {
+            out.push(raw.clone());
+        } else {
+            return Err(CliError::usage(format!("不支持的 quiet 参数：{raw}"), "运行 `quiet --help` 查看可用参数"));
+        }
+        i += 1;
+    }
+    if domain == "drive" && flag(args, "--query").is_none() { out.extend(["--query".into(), "".into()]); }
+    Ok(out)
+}
+
+fn run_lark(args: &[String]) -> Result<Value, CliError> {
+    let binary = env::var_os("LARK_CLI").unwrap_or_else(|| std::ffi::OsString::from("lark-cli"));
+    let output = Command::new(&binary).args(args).output().map_err(|e| {
+        if e.kind() == io::ErrorKind::NotFound {
+            CliError::unsupported("找不到 lark-cli".to_string(), "安装 lark-cli，或设置 LARK_CLI 指向其可执行文件")
+        } else {
+            CliError::io(format!("无法运行 lark-cli：{e}"))
+        }
+    })?;
+    let parsed = serde_json::from_slice::<Value>(&output.stdout).map_err(|e| {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        CliError::io(if stderr.is_empty() { format!("lark-cli 返回了非 JSON 输出：{e}") } else { format!("lark-cli 返回了非 JSON 输出：{stderr}") })
+    })?;
+    if !output.status.success() || parsed.get("ok") != Some(&Value::Bool(true)) {
+        let message = parsed.pointer("/error/message").and_then(Value::as_str).map(str::to_owned).or_else(|| parsed.get("message").and_then(Value::as_str).map(str::to_owned)).or_else(|| {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            (!stderr.trim().is_empty()).then(|| stderr.trim().to_string())
+        }).unwrap_or_else(|| "lark-cli 请求失败".to_string());
+        return Err(CliError::io(format!("lark-cli 请求失败：{message}")));
+    }
+    Ok(parsed)
+}
+
+fn remote_result(response: &Value, operation: &str) -> Value {
+    json!({
+        "source": "lark-cli",
+        "identity": response.get("identity").and_then(Value::as_str).unwrap_or("user"),
+        "operation": operation,
+        "result": response.get("data").cloned().unwrap_or(Value::Null),
+    })
+}
+
+fn quiet_import(args: &[String], options: &Options) -> Result<Value, CliError> {
+    let title = flag(args, "--title");
+    let parent = flag(args, "--parent");
+    let mut store = open_store(options)?;
+    if let Some(p) = parent.as_deref().filter(|p| *p != "root") { ensure_document(&mut store, p)?; }
+    let forwarded = lark_forward_args(args, "docs", "+fetch", LARK_FETCH_VALUE_FLAGS, &[], &["--title", "--parent"])?;
+    let response = run_lark(&forwarded)?;
+    let document = response.pointer("/data/document").ok_or_else(|| CliError::io("lark-cli 响应缺少 document"))?;
+    let content = document.get("content").and_then(Value::as_str).ok_or_else(|| CliError::io("lark-cli 响应缺少 document.content"))?;
+    let format = flag(&forwarded, "--doc-format").unwrap_or_else(|| "xml".into()).to_ascii_lowercase();
+    let mut imported = if matches!(format.as_str(), "xml" | "docxxml") {
+        docxml::parse(content)?
+    } else if matches!(format.as_str(), "markdown" | "md" | "im-markdown") {
+        let (remote_title, body) = lark_markdown_title(content);
+        let selected_title = title.clone().or(remote_title);
+        let mut doc = markdown_document(body, selected_title.as_deref());
+        if let Some(selected_title) = selected_title { doc.title = RichText::plain(selected_title); }
+        doc
+    } else {
+        return Err(CliError::validation(format!("不支持导入格式：{format}"), "使用 --doc-format markdown 或 xml"));
+    };
+    if let Some(selected_title) = title { imported.title = RichText::plain(selected_title); }
+    if options.dry_run { return Ok(json!({ "dry_run": true, "operation": "quiet import", "document": preview_document(&imported), "source": remote_result(&response, "docs +fetch") })); }
+    let id = store.create_from(&imported)?;
+    if let Some(parent) = parent.as_deref().filter(|p| *p != "root") { store.set_parent(&id, Some(parent))?; }
+    let entry = store.list().into_iter().find(|e| e.id == id).ok_or_else(|| CliError::io("导入成功但无法读取新文档"))?;
+    Ok(json!({ "document": entry_value(&entry), "source": remote_result(&response, "docs +fetch") }))
+}
+
+fn lark_markdown_title(content: &str) -> (Option<String>, &str) {
+    let trimmed = content.trim_start();
+    let Some(rest) = trimmed.strip_prefix("<title>") else { return (None, content); };
+    let Some(end) = rest.find("</title>") else { return (None, content); };
+    (Some(rest[..end].to_string()), rest[end + "</title>".len()..].trim_start())
+}
+
 
 fn docs_command(args: &[String], options: &Options) -> Result<Value, CliError> {
     let command = args.first().map(String::as_str).unwrap_or("+list");
@@ -768,6 +936,12 @@ fn command_schemas() -> Vec<Value> {
         ("docs +import", "write", "导入 Markdown/TXT/DocxXML", "quiet docs +import FILE..."),
         ("docs +export", "read", "导出 Markdown/XML/HTML/PDF", "quiet docs +export ID --as FORMAT"),
         ("docs +search", "read", "搜索标题和正文", "quiet docs +search QUERY"),
+        ("+search", "read", "通过 lark-cli 搜索当前用户可见的云空间资料", "quiet +search [--query TEXT] [--mine|--created-by-me]"),
+        ("+fetch", "read", "通过 lark-cli 读取飞书文档", "quiet +fetch --doc URL_OR_TOKEN --doc-format markdown|xml"),
+        ("+import", "write", "读取飞书文档并导入隔离的本地 Quiet.md 文档库", "quiet +import --doc URL_OR_TOKEN [--doc-format markdown|xml] [--title TITLE]"),
+        ("skills list", "read", "列出内置 Quiet skills", "quiet skills list"),
+        ("skills read", "read", "读取 Quiet skill 与 Prompt", "quiet skills read quiet-doc"),
+        ("prompt", "read", "读取 Quiet 文档 Agent Prompt", "quiet prompt"),
         ("trash restore", "high-risk-write", "恢复回收站文档", "quiet trash restore ID --yes"),
         ("trash purge", "high-risk-write", "永久删除回收站文档", "quiet trash purge ID --yes"),
         ("library doctor", "read", "校验索引、XML、父子关系和素材", "quiet library doctor"),
@@ -1157,6 +1331,32 @@ images, covers, columns, merged tables and unknown extensions.
 
 Global flags: --library PATH --format json|pretty|table|ndjson|csv --jq EXPR --dry-run --yes
 "#),
+        Some("quiet") | Some("+search") | Some("+fetch") | Some("+import") => println!(r#"quiet — selected Feishu material operations through lark-cli
+
+READ
+  quiet +search --query "关键词" --as user
+  quiet +search --query "" --mine
+  quiet +fetch --doc URL_OR_TOKEN --doc-format markdown
+
+LOCAL IMPORT
+  quiet --library /tmp/quiet-lib +import --doc URL_OR_TOKEN --doc-format markdown
+  quiet --library /tmp/quiet-lib +import --doc URL_OR_TOKEN --doc-format markdown --dry-run
+
+The shortcut layer never implements Feishu OAuth itself. It invokes lark-cli,
+defaults to the user identity, returns the remote result under data.result, and
+only imports fetched document content into the explicitly selected local library.
+"#),
+        Some("skills") => println!(r#"quiet skills — inspect bundled Quiet skills
+
+COMMANDS
+  list
+  read quiet-doc
+"#),
+        Some("prompt") => println!(r#"quiet prompt — print the Quiet document-agent prompt
+
+USAGE
+  quiet prompt [quiet-doc]
+"#),
         Some("library") => println!(r#"quiet library — inspect the local library
 
 COMMANDS
@@ -1189,13 +1389,19 @@ shape as lark-cli but describes local operations only.
 
 AGENT QUICKSTART
   Browse commands:  quiet <domain> --help
-  Inspect a call:   quiet schema <domain> <command>
+  Inspect a call:   quiet schema <command>
+  Root shortcuts:   quiet +search | +fetch | +import
   Prefer a +shortcut over a lower-level command when one matches the task.
   Risk: each write command documents read | write | high-risk-write.
   On writes: --dry-run previews; high-risk writes require --yes.
 
 USAGE
   quiet <command> [subcommand] [flags]
+
+SHORTCUTS
+  +search    Search selected Feishu materials through lark-cli
+  +fetch     Fetch a Feishu document through lark-cli
+  +import    Import fetched content into the selected local library
 
 DOMAINS
   docs       Create, read, update, search, move, export and delete local documents
@@ -1204,6 +1410,8 @@ DOMAINS
   assets     Inspect local image and attachment references
   emoji      Search embedded emoji data
   schema     Inspect command parameters and risk
+  skills     List or read bundled Quiet skills
+  prompt     Print the Quiet document-agent prompt
   app        Open the Quiet.md GUI
 
 OUTPUT
@@ -1211,8 +1419,8 @@ OUTPUT
   --jq <expr>                             Simple safe field selection
   --library <path>                        Use a separate library
 
-Quiet is local. It does not implement Feishu OAuth, messaging, calendar, mail,
-Base, tasks, approvals or other cloud services; use lark-cli for those domains.
+Quiet remains local and does not implement Feishu OAuth, messaging, calendar, mail,
+Base, tasks, approvals or cloud permissions; root shortcuts delegate to lark-cli.
 "#),
     }
 }
@@ -1241,5 +1449,19 @@ mod tests {
         let html = render_html(&doc, &[], Path::new("/tmp"));
         assert!(html.contains("&lt;title&gt;"));
         assert!(html.contains("&lt;&amp;"));
+    }
+
+    #[test]
+    fn forwards_quiet_search_with_safe_user_default() {
+        let args = vec!["+search".into(), "--mine".into()];
+        let forwarded = lark_forward_args(&args, "drive", "+search", LARK_SEARCH_VALUE_FLAGS, LARK_SEARCH_BOOL_FLAGS, &[]).unwrap();
+        assert_eq!(forwarded, vec!["drive".to_string(), "+search".to_string(), "--as".to_string(), "user".to_string(), "--format".to_string(), "json".to_string(), "--mine".to_string(), "--query".to_string(), "".to_string()]);
+    }
+
+    #[test]
+    fn extracts_lark_markdown_title() {
+        let (title, body) = lark_markdown_title("<title>远端文档</title>\n\n# 正文");
+        assert_eq!(title.as_deref(), Some("远端文档"));
+        assert_eq!(body, "# 正文");
     }
 }

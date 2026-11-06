@@ -4,7 +4,7 @@
 
 `quiet` 是 Quiet.md 的本地 CLI companion。它复用 `fdl_core` 的文档模型、DocxXML 读写、Markdown 转换和 Store 写入路径；不直接改 `index.json` 或拼接 XML 绕过原子写入/锁。
 
-命令交互沿用 `lark-cli` 的 Agent-friendly 约定，但业务范围只覆盖 Quiet.md 的本地能力：
+命令交互沿用 `lark-cli` 的 Agent-friendly 约定；主体是 Quiet.md 本地能力，另提供一组根级资料快捷命令：
 
 - 根命令和业务域 `--help`；
 - `+shortcut` 人类/Agent 友好命令；
@@ -13,7 +13,7 @@
 - 写操作支持 `--dry-run`，删除/清空等高风险写操作要求 `--yes`；
 - stdout 只放成功数据，stderr 只放错误；非零退出表示失败。
 
-不复制飞书云端能力。消息、日历、邮箱、审批、OKR、云端权限和 OAuth 不属于 Quiet 的本地产品边界。
+不复制飞书云端业务能力。Quiet 根级快捷命令仅把搜索、读取和显式导入委托给已安装的 `lark-cli`；消息、日历、邮箱、审批、OKR、云端权限和 OAuth 仍不属于 Quiet 的本地产品边界。
 
 ## 命令树
 
@@ -50,6 +50,17 @@ docs:
   +refs                   设置引用列表显示
   +links                  列出反向引用
   +stats                  文档统计
+
+root shortcuts:
+  +search                通过 lark-cli 搜索当前用户可见的云空间资料
+  +fetch                 通过 lark-cli 读取飞书文档内容
+  +import                读取飞书文档并写入指定的本地 Quiet.md 文档库
+
+skills:
+  list / read quiet-doc     查看内置 Quiet 文档 skill 与 Prompt
+
+prompt:
+  quiet-doc                 输出文档 Agent Prompt
 
 library:
   path / status / tree / doctor / validate / settings
@@ -99,12 +110,14 @@ app:
 
 列表数据使用稳定字段 `id`、`title`、`created`、`modified`、`opened`、`pinned`、`starred`、`parent`、`width`、`reading`。文档正文以 `markdown`、`xml` 或 `plain_text` 明确标识，不把大正文隐式塞进列表响应。
 
+Quiet 根级快捷命令的成功响应仍使用本地 envelope；`data.source` 为 `lark-cli`，远端身份在 `data.identity`，飞书返回体位于 `data.result`。快捷命令默认以 `--as user` 调用，不实现 OAuth，也不把远端资料同步到本地，除非显式执行 `+import`。
+
 ## 风险模型
 
 | 操作 | 风险 | 规则 |
 |---|---|---|
-| list/get/search/export/doctor/validate | read | 直接执行 |
-| create/update/append/rename/move/pin/star/width/settings | write | `--dry-run` 可预览 |
+| list/get/search/export/doctor/validate/quiet +search/quiet +fetch | read | 直接执行；资料读取委托给 lark-cli |
+| create/update/append/rename/move/pin/star/width/settings/quiet +import | write | `--dry-run` 可预览 |
 | delete/restore/purge/empty/import-replace | high-risk-write | 必须 `--yes`；`--dry-run` 不写盘 |
 
 所有 Store 写入复用短 `.lock`、临时文件 + rename、index backup 和已有冲突检测。CLI 不碰真实默认库的测试数据；测试统一设置 `QUIET_MD_HOME` 到临时目录。
@@ -115,10 +128,12 @@ app:
 - HTML 导出由 CLI 提供自包含、无网络依赖的渲染；PDF 先生成同一 HTML，再使用系统已有转换器（macOS `cupsfilter` 或 PATH 中的 `pandoc`）并在工具不可用时返回明确 `unsupported`，不伪造成功。
 - `app open` 不自动激活或修改文档；GUI 的快捷键、主题、窗口状态仍由 GUI 管理。
 - CLI binary 名为 `quiet`，GUI binary 保持 `quiet_md`，所以安装后两者并存。
+- `quiet +search`、`+fetch`、`+import` 只允许一组显式的 lark-cli 参数；命令通过参数数组调用，不经过 shell。`+import` 只写 `--library` 指定的本地库，默认格式为 DocxXML，也支持 `--doc-format markdown`。
+- `quiet skills` 和 `quiet prompt` 暴露随 CLI 打包的本地文档 skill/Prompt；它们不读取或修改云端凭据，也不替代 lark-cli 的 OAuth。
 
 ## 验收
 
-1. `quiet --help`、每个域的 `--help`、`quiet schema` 可读。
+1. `quiet --help`、每个域的 `--help`、`quiet schema`、`quiet skills list` 和 `quiet prompt` 可读。
 2. 临时库中完成 create → list → get → update/append → search → export → rename/move → delete → trash restore/purge 的闭环。
 3. XML round-trip 通过现有 core fixture；CLI 写入不破坏 GUI 可读性。
 4. JSON 成功/错误 stdout/stderr、退出码、`--dry-run` 和 `--yes` 行为固定。
