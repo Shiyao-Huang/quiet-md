@@ -97,6 +97,28 @@ A 120 Hz display gives each frame 8.3 ms. Even at P95 on a million-character doc
 - **Shortcuts**: press `⌘ /` (`Ctrl+/` on Windows) to see them all. Every one can be rebound. On Windows, Ctrl stands in for ⌘ and Alt for ⌥; the app and the Getting started guides show the keys for your system.
 - **Themes**: four built-in styles — Craft, Feishu, Notion and Obsidian — each with a dark variant, or write your own in CSS; see [docs/THEMES.md](docs/THEMES.md).
 
+## CLI
+
+Quiet includes an agent-friendly local CLI alongside the GUI. Build it with:
+
+```bash
+cargo build --release -p quiet-cli
+./target/release/quiet --help
+```
+
+The command surface follows the same three-layer shape as modern Agent CLIs: `+shortcuts` for common workflows, typed local commands for explicit operations, and `schema` for machine-readable discovery. It only operates on the local Quiet.md library; cloud messaging, calendar, mail, Base and OAuth remain outside Quiet's scope.
+
+```bash
+quiet docs +list --format table
+quiet docs +search "design" --format ndjson
+quiet docs +create --title "Weekly note" --content "# Progress\n\nDone" --content-format markdown
+quiet docs +export DOCUMENT_ID --as markdown --output note.md
+quiet library doctor --format pretty
+quiet trash restore DOCUMENT_ID --yes
+```
+
+Successful calls return a JSON envelope by default. Use `--format json|pretty|table|ndjson|csv`, `--jq` for safe field selection, `--dry-run` before writes, and `--yes` for high-risk operations. Complete command details and the local data contract are in [docs/CLI.md](docs/CLI.md).
+
 ## Contributors
 
 Thanks to everyone who has helped build Quiet.md. Issues and pull requests are welcome: building, testing and code conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).

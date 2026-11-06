@@ -4247,6 +4247,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "quiet-cli"
+version = "0.1.6"
+dependencies = [
+ "anyhow",
+ "base64",
+ "fdl_core",
+ "serde_json",
+]
+
+[[package]]
 name = "quiet_md"
 version = "0.1.6"
 dependencies = [

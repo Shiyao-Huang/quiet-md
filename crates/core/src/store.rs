@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use std::io::Write;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use crate::time::now;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -306,6 +306,11 @@ impl Store {
 
     pub fn open() -> Result<Self> {
         Self::open_at(Self::root_dir())
+    }
+
+    /// The on-disk root of this store, useful for tools that resolve relative assets.
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     pub fn open_at(root: PathBuf) -> Result<Self> {

@@ -1,0 +1,16 @@
+[package]
+name = "quiet-cli"
+version = "0.1.6"
+edition = "2024"
+description = "Agent-friendly local CLI for Quiet.md"
+license = "MIT"
+
+[[bin]]
+name = "quiet"
+path = "src/main.rs"
+
+[dependencies]
+fdl_core = { path = "../core" }
+anyhow = "1.0.104"
+base64 = "0.22"
+serde_json = "1.0.154"

@@ -95,6 +95,28 @@
 - **快捷键**：按 `⌘ /`（Windows 上是 `Ctrl+/`）查看全部快捷键，每一个都能改。快捷键在 Windows 上用 Ctrl 代替 ⌘、Alt 代替 ⌥，应用里和「开始指南」里都按当前系统显示。
 - **主题**：内置 Craft、飞书、Notion、Obsidian 四套风格，也可以用 CSS 自己写，见 [docs/THEMES.md](docs/THEMES.md)。
 
+## CLI
+
+Quiet 在 GUI 之外提供面向 Agent 的本地 CLI。构建方式：
+
+```bash
+cargo build --release -p quiet-cli
+./target/release/quiet --help
+```
+
+命令结构沿用现代 Agent CLI 的三层形式：常用工作流使用 `+shortcut`，明确操作使用类型化本地命令，执行前用 `schema` 自省参数和风险。它只操作本地 Quiet.md 文档库；消息、日历、邮箱、多维表格和 OAuth 等云端能力不属于 Quiet 的范围。
+
+```bash
+quiet docs +list --format table
+quiet docs +search "设计" --format ndjson
+quiet docs +create --title "周报" --content "# 进展\n\n已完成" --content-format markdown
+quiet docs +export DOCUMENT_ID --as markdown --output note.md
+quiet library doctor --format pretty
+quiet trash restore DOCUMENT_ID --yes
+```
+
+成功调用默认返回 JSON envelope。可用 `--format json|pretty|table|ndjson|csv`，用 `--jq` 安全选择字段；写操作先用 `--dry-run`，高风险操作必须传 `--yes`。完整命令和本地数据契约见 [docs/CLI.md](docs/CLI.md)。
+
 ## 贡献者
 
 感谢每一位参与 Quiet.md 的人。欢迎提 issue 和 PR，构建、测试和代码约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。

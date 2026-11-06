@@ -8,19 +8,23 @@ macOS needs the Xcode Command Line Tools; Windows needs the Visual Studio 2022 C
 
 ```sh
 cargo build --release --locked
-./target/release/quiet_md                          # uses ~/Documents/Quiet.md
-QUIET_MD_HOME=/tmp/lib ./target/release/quiet_md   # uses another library
+./target/release/quiet_md                          # GUI, uses ~/Documents/Quiet.md
+cargo build --release -p quiet-cli
+./target/release/quiet --help                     # local Agent CLI
+QUIET_MD_HOME=/tmp/lib ./target/release/quiet_md   # GUI against another library
+QUIET_MD_HOME=/tmp/lib ./target/release/quiet library status
 ```
 
 While developing, point `QUIET_MD_HOME` at a scratch directory; don't test against your real library.
 
-The repository is a Cargo workspace: `crates/core` is the document engine (`fdl_core`), which does not depend on GPUI, and the root crate is the app. GPUI and taffy are locally patched copies in `vendor/`; the changes are listed in [vendor/PATCHES.md](vendor/PATCHES.md). `target/debug` can grow past 10 GB; if you only build release, `cargo clean --profile dev` clears it.
+The repository is a Cargo workspace: `crates/core` is the document engine (`fdl_core`), `crates/cli` is the local Agent CLI (`quiet`), and the root crate is the GUI app (`quiet_md`). GPUI and taffy are locally patched copies in `vendor/`; the changes are listed in [vendor/PATCHES.md](vendor/PATCHES.md). `target/debug` can grow past 10 GB; if you only build release, `cargo clean --profile dev` clears it.
 
 ## Testing
 
 ```sh
 scripts/check.sh                                        # tests + clippy with zero warnings; run before committing
 cargo test --release -p fdl_core                        # the document engine only, without building GPUI
+cargo test -p quiet-cli                                 # CLI unit + lifecycle integration tests
 FDL_FUZZ_SEEDS=2000 cargo test --release random_edits   # more random edits, for the editing core
 ```
 
